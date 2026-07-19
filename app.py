@@ -6,12 +6,37 @@ import streamlit as st
 
 st.set_page_config(page_title="DentaFlow", page_icon="🦷", layout="centered")
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from lib.auth import require_auth
 from lib.db import init_schema
 from views import (availability, book, patients, reminders, today, week)
 from views import settings as settings_view
 
-init_schema()
+try:
+    init_schema()
+except SQLAlchemyError as e:
+    # psycopg error messages contain host/port/reason but never the password,
+    # so it's safe to surface them instead of the redacted Streamlit crash.
+    reason = str(getattr(e, "orig", e)).strip()
+    st.error("🦷 DentaFlow could not connect to its database.")
+    st.markdown("**Underlying error:**")
+    st.code(reason or repr(e))
+    st.markdown(
+        "**Most likely fixes**\n"
+        "- On Supabase free tier, use the **Session pooler** connection string, "
+        "not the direct one:\n"
+        "  - host `aws-0-<region>.pooler.supabase.com` (not `db.<ref>.supabase.co`)\n"
+        "  - user `postgres.<project-ref>` (not just `postgres`)\n"
+        "  - scheme `postgresql+psycopg://`, ending with `?sslmode=require`\n"
+        "- If it says *password authentication failed*: fix the password and "
+        "URL-encode special characters (`@`→`%40`, `#`→`%23`, `/`→`%2F`).\n"
+        "- If it says *could not translate host name*: the region/host is wrong.\n"
+        "- Make sure the Supabase project isn't **paused**.\n\n"
+        "Update `db_url` in **Manage app → Settings → Secrets**, then reboot."
+    )
+    st.stop()
+
 require_auth()
 
 PAGES = {
